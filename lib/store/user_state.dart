@@ -39,6 +39,7 @@ class SessionLog {
   String notes;
   final Map<String, String> substitutions; // exerciseId -> replacement
   String? completedAt; // null = in progress
+  bool warmupDone; // échauffement effectué
 
   SessionLog({
     required this.sessionId,
@@ -47,6 +48,7 @@ class SessionLog {
     this.notes = '',
     Map<String, String>? substitutions,
     this.completedAt,
+    this.warmupDone = false,
   }) : substitutions = substitutions ?? {};
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +58,7 @@ class SessionLog {
         'notes': notes,
         'substitutions': substitutions,
         'completedAt': completedAt,
+        'warmupDone': warmupDone,
       };
 
   factory SessionLog.fromJson(Map<String, dynamic> j) => SessionLog(
@@ -68,6 +71,7 @@ class SessionLog {
         substitutions: ((j['substitutions'] as Map?) ?? {})
             .map((k, v) => MapEntry(k.toString(), v.toString())),
         completedAt: j['completedAt'] as String?,
+        warmupDone: j['warmupDone'] as bool? ?? false,
       );
 }
 

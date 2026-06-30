@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../utils/machine_photos.dart';
+
 import '../app_shell.dart';
 import '../data/program.dart';
+import '../data/warmup.dart';
 import '../models/program_models.dart';
 import '../store/store.dart';
 import '../store/user_state.dart';
@@ -222,6 +226,16 @@ class _SessionScreenState extends State<SessionScreen> {
             ),
             const SizedBox(height: 22),
 
+            // Warm-up (spécifique haut / bas du corps)
+            _WarmupCard(
+              t: t,
+              routine: warmupForCode(session.code),
+              done: log.warmupDone,
+              onToggle: (v) =>
+                  store.setWarmupDone(widget.sessionId, _date, v),
+            ),
+            const SizedBox(height: 22),
+
             // Exercises
             for (final ex in session.exercises)
               _ExerciseCard(
@@ -231,6 +245,8 @@ class _SessionScreenState extends State<SessionScreen> {
                 sets: log.sets.where((s) => s.exerciseId == ex.id).toList(),
                 substitution: log.substitutions[ex.id],
                 lastWeight: store.getLastWeight(ex.id),
+                photoFilename: store.machinePhoto(ex.id),
+                onPhoto: () => _openMachinePhoto(t, store, ex),
                 onToggleDone: (setIdx, newDone) {
                   store.updateSet(widget.sessionId, _date, ex.id, setIdx,
                       done: newDone);
@@ -389,6 +405,107 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
+  void _openMachinePhoto(AppTokens t, Store store, Exercise ex) {
+    final existing = store.machinePhoto(ex.id);
+    showAppSheet(
+      context: context,
+      t: t,
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Photo de la machine',
+              style: t.display(22, weight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(ex.name,
+              style: t.body(13, color: t.textMuted, height: 1.4)),
+          const SizedBox(height: 16),
+
+          // Aperçu si une photo existe
+          if (existing != null && existing.isNotEmpty) ...[
+            FutureBuilder<String?>(
+              future: MachinePhotos.instance.pathFor(existing),
+              builder: (c, snap) {
+                if (snap.data == null) {
+                  return const SizedBox.shrink();
+                }
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(t.radiusSm),
+                  child: Image.file(File(snap.data!),
+                      width: double.infinity,
+                      height: 220,
+                      fit: BoxFit.cover),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Boutons caméra / galerie
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryButton(
+                  t: t,
+                  full: true,
+                  icon: Icons.photo_camera,
+                  label: 'Caméra',
+                  onPressed: () =>
+                      _pickPhoto(ctx, store, ex, fromCamera: true),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GhostButton(
+                  t: t,
+                  full: true,
+                  icon: Icons.photo_library_outlined,
+                  label: 'Galerie',
+                  onPressed: () =>
+                      _pickPhoto(ctx, store, ex, fromCamera: false),
+                ),
+              ),
+            ],
+          ),
+          if (existing != null && existing.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            GhostButton(
+              t: t,
+              full: true,
+              icon: Icons.delete_outline,
+              label: 'Supprimer la photo',
+              onPressed: () async {
+                await MachinePhotos.instance.delete(existing);
+                store.setMachinePhoto(ex.id, null);
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'La photo reste sur ton téléphone (pas dans le cloud). '
+            'Idéal pour retrouver la bonne machine dans ton gym.',
+            style: t.body(11.5, color: t.textFaint, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickPhoto(BuildContext sheetCtx, Store store, Exercise ex,
+      {required bool fromCamera}) async {
+    final filename = await MachinePhotos.instance
+        .capture(ex.id, fromCamera: fromCamera);
+    if (filename != null) {
+      // Supprime l'ancienne photo si remplacement.
+      final old = store.machinePhoto(ex.id);
+      if (old != null && old.isNotEmpty && old != filename) {
+        await MachinePhotos.instance.delete(old);
+      }
+      store.setMachinePhoto(ex.id, filename);
+    }
+    if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
+  }
+
   void _openEnd(AppTokens t, Store store, int doneSets, int totalSets,
       Phase phase) {
     final pct = totalSets == 0 ? 0 : ((doneSets / totalSets) * 100).round();
@@ -466,6 +583,8 @@ class _ExerciseCard extends StatelessWidget {
   final List<SetLog> sets;
   final String? substitution;
   final double? lastWeight;
+  final String? photoFilename;
+  final VoidCallback onPhoto;
   final void Function(int setIdx, bool newDone) onToggleDone;
   final void Function(int setIdx, double? val) onWeight;
   final void Function(int setIdx, int? val) onReps;
@@ -478,6 +597,8 @@ class _ExerciseCard extends StatelessWidget {
     required this.sets,
     required this.substitution,
     required this.lastWeight,
+    required this.photoFilename,
+    required this.onPhoto,
     required this.onToggleDone,
     required this.onWeight,
     required this.onReps,
@@ -587,6 +708,14 @@ class _ExerciseCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     IconBtn(
                         t: t, icon: Icons.swap_vert, onPressed: onSubstitute),
+                    const SizedBox(height: 8),
+                    IconBtn(
+                      t: t,
+                      icon: (photoFilename != null && photoFilename!.isNotEmpty)
+                          ? Icons.photo_camera
+                          : Icons.photo_camera_outlined,
+                      onPressed: onPhoto,
+                    ),
                   ],
                 ),
               ],
@@ -598,6 +727,17 @@ class _ExerciseCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 8, bottom: 4),
                 child: Text(ex.notes,
                     style: t.body(12.5, color: t.textMuted, height: 1.5)),
+              ),
+
+            // machine photo thumbnail
+            if (photoFilename != null && photoFilename!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _MachineThumb(
+                  t: t,
+                  filename: photoFilename!,
+                  onTap: onPhoto,
+                ),
               ),
 
             const SizedBox(height: 8),
@@ -640,6 +780,176 @@ class _ExerciseCard extends StatelessWidget {
     final digits = reps.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '—';
     return digits.length > 2 ? digits.substring(0, 2) : digits;
+  }
+}
+
+// ===== Warm-up card (collapsible) =====
+class _WarmupCard extends StatefulWidget {
+  final AppTokens t;
+  final WarmupRoutine routine;
+  final bool done;
+  final ValueChanged<bool> onToggle;
+  const _WarmupCard({
+    required this.t,
+    required this.routine,
+    required this.done,
+    required this.onToggle,
+  });
+
+  @override
+  State<_WarmupCard> createState() => _WarmupCardState();
+}
+
+class _WarmupCardState extends State<_WarmupCard> {
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Déplié par défaut si pas encore fait, replié si déjà fait.
+    _expanded = !widget.done;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.t;
+    final r = widget.routine;
+    final done = widget.done;
+
+    return AppCard(
+      t: t,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header (tappable to expand)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: (done ? t.accent : t.textFaint)
+                        .withValues(alpha: done ? 0.18 : 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    done
+                        ? Icons.check_circle_outline
+                        : Icons.local_fire_department_outlined,
+                    color: done ? t.accent : t.textMuted,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Échauffement',
+                          style: t.display(15.5, weight: FontWeight.w800)),
+                      const SizedBox(height: 2),
+                      Text(
+                        done
+                            ? 'Fait · ${r.subtitle}'
+                            : '${r.subtitle} · ~${r.estMinutes} min',
+                        style: t.body(12, color: t.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                    color: t.textFaint, size: 22),
+              ],
+            ),
+          ),
+
+          if (_expanded) ...[
+            const SizedBox(height: 14),
+            // Coach note
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: t.surface2,
+                borderRadius: BorderRadius.circular(t.radiusSm),
+                border: Border(
+                  left: BorderSide(color: t.accent, width: 3),
+                ),
+              ),
+              child: Text(r.coachNote,
+                  style: t.body(12.5, color: t.textMuted, height: 1.5)),
+            ),
+            const SizedBox(height: 14),
+            // Moves
+            for (var i = 0; i < r.moves.length; i++)
+              Padding(
+                padding: EdgeInsets.only(
+                    bottom: i == r.moves.length - 1 ? 0 : 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 22,
+                      child: Text('${i + 1}',
+                          style: t.mono(13,
+                              weight: FontWeight.w700, color: t.accent)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(r.moves[i].name,
+                                    style: t.body(13.5,
+                                        weight: FontWeight.w700, color: t.text)),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(r.moves[i].detail,
+                                  style: t.mono(11.5,
+                                      weight: FontWeight.w600,
+                                      color: t.textMuted)),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(r.moves[i].why,
+                              style: t.body(11.5,
+                                  color: t.textFaint, height: 1.4)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
+            done
+                ? GhostButton(
+                    t: t,
+                    full: true,
+                    icon: Icons.undo,
+                    label: 'Marquer non fait',
+                    onPressed: () => widget.onToggle(false),
+                  )
+                : PrimaryButton(
+                    t: t,
+                    full: true,
+                    icon: Icons.check,
+                    label: 'Échauffement terminé',
+                    onPressed: () {
+                      widget.onToggle(true);
+                      setState(() => _expanded = false);
+                    },
+                  ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -896,6 +1206,86 @@ class _BodyweightRow extends StatelessWidget {
           const SizedBox(width: 8),
           _CheckButton(t: t, done: done, onTap: onToggle),
         ],
+      ),
+    );
+  }
+}
+
+// ===== Machine photo thumbnail =====
+class _MachineThumb extends StatelessWidget {
+  final AppTokens t;
+  final String filename;
+  final VoidCallback onTap;
+  const _MachineThumb({
+    required this.t,
+    required this.filename,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: FutureBuilder<String?>(
+        future: MachinePhotos.instance.pathFor(filename),
+        builder: (c, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const SizedBox.shrink();
+          }
+          if (snap.data == null) {
+            // Fichier introuvable (ex: réinstallation) -> invite à reprendre.
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: t.surface2,
+                borderRadius: BorderRadius.circular(t.radiusSm),
+                border: Border.all(color: t.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.add_a_photo_outlined,
+                      size: 16, color: t.textMuted),
+                  const SizedBox(width: 8),
+                  Text('Ajouter une photo de la machine',
+                      style: t.body(12, color: t.textMuted)),
+                ],
+              ),
+            );
+          }
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(t.radiusSm),
+            child: Stack(
+              children: [
+                Image.file(File(snap.data!),
+                    width: double.infinity, height: 140, fit: BoxFit.cover),
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.zoom_in, size: 13, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text('Voir',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

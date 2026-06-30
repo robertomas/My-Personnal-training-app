@@ -38,6 +38,11 @@ class Store extends ChangeNotifier {
   // Indexé par date ISO -> une mesure par jour (la dernière écrase).
   final Map<String, BodyMeasure> measures = {};
 
+  // ---- Photos de machines (locales) ----
+  // exerciseId -> nom de fichier (dans le dossier de l'app). Seul le nom est
+  // stocké/synchronisé ; l'image reste sur l'appareil (même gym, photo 1×).
+  final Map<String, String> machinePhotos = {};
+
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _read();
@@ -102,6 +107,10 @@ class Store extends ChangeNotifier {
       final m = BodyMeasure.fromJson(Map<String, dynamic>.from(e as Map));
       measures[m.date] = m;
     }
+    machinePhotos
+      ..clear()
+      ..addAll(((parsed['machinePhotos'] as Map?) ?? {})
+          .map((k, v) => MapEntry(k.toString(), v.toString())));
   }
 
   /// Pousse vers le cloud avec un petit debounce (évite le spam d'écritures).
@@ -167,6 +176,10 @@ class Store extends ChangeNotifier {
         final m = BodyMeasure.fromJson(Map<String, dynamic>.from(e as Map));
         measures[m.date] = m;
       }
+      machinePhotos
+        ..clear()
+        ..addAll(((parsed['machinePhotos'] as Map?) ?? {})
+            .map((k, v) => MapEntry(k.toString(), v.toString())));
     } catch (e) {
       debugPrint('Store: read failed, using default ($e)');
     }
@@ -187,6 +200,7 @@ class Store extends ChangeNotifier {
         'logs': logs.map((k, v) => MapEntry(k, v.toJson())),
         'skipped': skipped.toList(),
         'measures': measures.values.map((m) => m.toJson()).toList(),
+        'machinePhotos': machinePhotos,
       };
 
   void _write() {
@@ -297,6 +311,26 @@ class Store extends ChangeNotifier {
       }
       _write();
     }
+  }
+
+  void setWarmupDone(String sessionId, DateTime date, bool done) {
+    final log = logs[logKey(sessionId, date)];
+    if (log != null && log.warmupDone != done) {
+      log.warmupDone = done;
+      _write();
+    }
+  }
+
+  // ---------- Photos de machines ----------
+  String? machinePhoto(String exerciseId) => machinePhotos[exerciseId];
+
+  void setMachinePhoto(String exerciseId, String? filename) {
+    if (filename == null || filename.isEmpty) {
+      machinePhotos.remove(exerciseId);
+    } else {
+      machinePhotos[exerciseId] = filename;
+    }
+    _write();
   }
 
   // ---------- Programme séquentiel (décaler / sauter) ----------
