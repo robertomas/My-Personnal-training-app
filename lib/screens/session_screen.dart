@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../utils/machine_photos.dart';
 
 import '../app_shell.dart';
+import '../data/exercise_images.dart';
 import '../data/program.dart';
 import '../data/warmup.dart';
 import '../models/program_models.dart';
@@ -729,6 +730,17 @@ class _ExerciseCard extends StatelessWidget {
                     style: t.body(12.5, color: t.textMuted, height: 1.5)),
               ),
 
+            // illustration de démonstration (exos moins évidents)
+            if (exerciseImageFor(ex.id) != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _DemoImage(
+                  t: t,
+                  asset: exerciseImageFor(ex.id)!,
+                  label: ex.name,
+                ),
+              ),
+
             // machine photo thumbnail
             if (photoFilename != null && photoFilename!.isNotEmpty)
               Padding(
@@ -1286,6 +1298,111 @@ class _MachineThumb extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ===== Demo illustration (asset) =====
+class _DemoImage extends StatelessWidget {
+  final AppTokens t;
+  final String asset;
+  final String label;
+  const _DemoImage({
+    required this.t,
+    required this.asset,
+    required this.label,
+  });
+
+  void _openFull(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: GestureDetector(
+          onTap: () => Navigator.of(ctx).pop(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(t.radiusSm),
+                child: Image.asset(asset, fit: BoxFit.contain),
+              ),
+              const SizedBox(height: 12),
+              Text(label,
+                  textAlign: TextAlign.center,
+                  style: t.body(14,
+                      color: Colors.white, weight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text('Touche pour fermer · ▶ ouvre une vidéo',
+                  style: t.body(11.5, color: Colors.white70)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openFull(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(t.radiusSm),
+        child: Stack(
+          children: [
+            Container(
+              color: const Color(0xFF1A1A1A),
+              width: double.infinity,
+              child: Image.asset(
+                asset,
+                width: double.infinity,
+                height: 150,
+                fit: BoxFit.contain,
+              ),
+            ),
+            Positioned(
+              left: 8,
+              top: 8,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: t.accent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('DÉMO',
+                    style: t.label(9, color: t.accentText, spacing: 0.8)),
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.zoom_in, size: 13, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('Agrandir',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
