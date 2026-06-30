@@ -6,24 +6,25 @@
 // retombent sur le bouton YouTube (voir utils/demo.dart).
 
 const Map<String, String> _exerciseImageById = {
-  // Reverse Fly haltères (ex face-pull / reverse-fly toutes phases)
+  // Reverse Fly haltères — même mouvement = même image sur les 3 phases.
+  // (face-pull* et reverse-fly* sont tous le "Reverse Fly haltères" après la
+  //  réécriture sans câble ; band-pull-apart est devenu "Oiseau haltères".)
   'reverse-fly': 'assets/exercises/reverse_fly.png',
   'reverse-fly-2': 'assets/exercises/reverse_fly.png',
   'reverse-fly-3': 'assets/exercises/reverse_fly.png',
   'face-pull': 'assets/exercises/reverse_fly.png',
   'face-pull-2': 'assets/exercises/reverse_fly.png',
   'face-pull-3': 'assets/exercises/reverse_fly.png',
-  'band-pull-apart': 'assets/exercises/reverse_fly.png',
+  // Oiseau assis sur banc -> image dédiée (assis, distincte du reverse fly debout)
+  'band-pull-apart': 'assets/exercises/seated_rear_fly.png',
 
-  // Dead Bug
+  // Dead Bug (mouvement seul)
   'dead-bug': 'assets/exercises/dead_bug.png',
   'pallof': 'assets/exercises/dead_bug.png',
-  'deadbug-pallof': 'assets/exercises/dead_bug.png',
-  'pallof-deadbug': 'assets/exercises/dead_bug.png',
 
-  // Russian Twist medicine ball — partagé avec les combos core
-  // (deadbug-pallof et pallof-deadbug montrent déjà le dead bug ci-dessus ;
-  //  on garde wood-chop pour le mouvement de rotation debout)
+  // Combos core qui incluent le Russian Twist -> on montre le Russian Twist
+  'deadbug-pallof': 'assets/exercises/russian_twist.png',
+  'pallof-deadbug': 'assets/exercises/russian_twist.png',
 
   // Wood Chop medicine ball
   'wood-chop': 'assets/exercises/wood_chop.png',
